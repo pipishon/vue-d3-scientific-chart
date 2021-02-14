@@ -7,12 +7,32 @@
   >
     <g class="main-view" :transform="'translate('+paddingLeft+', 0)'">
       <g class="axis axis-bottom" v-axis="axisDataX"
-         :transform="`translate(0, ${height - 20})`" ></g>
-      <g class="axis axis-left" :align="axisY.type" v-axis.sync="axisY"></g>
-      <path class="line-chart__line" :d="path" />
+         :transform="`translate(0, ${height - 20})`" >{{axisDataX.settings}}</g>
+      <g class="axis axis-left" v-axis="axisDataY" >{{axisDataY.settings}}</g>
+
+      <g v-for="s in series" :key="s.id">
+        <path v-if="s.type === 'line'" :style="seriesLineStyle(s.styles)" class="line-chart__line" :d="path(s.data)" />
+        <template v-if="s.type === 'scatter'">
+          <template v-if="s.sign === 'circle'">
+            <circle  v-for="point in s.data"
+                     :key="point.x"
+                     :style="seriesScatterStyle(s.styles)"
+                     :r="getWidth(s.styles.width) / 2" :cx="axisDataX.scale(point.x)" :cy="axisDataY.scale(point.y)"></circle>
+          </template>
+          <template v-if="s.sign === 'square'">
+            <rect v-for="point in s.data" :key="point.x"
+                   :width="getWidth(s.styles.width)"
+                   :height="getWidth(s.styles.width)"
+                  :style="seriesScatterStyle(s.styles)"
+                  :x="axisDataX.scale(point.x) - getWidth(s.styles.width) / 2"
+                  :y="axisDataY.scale(point.y) - getWidth(s.styles.width) / 2">
+            </rect>
+          </template>
+        </template>
+      </g>
+
     </g>
   </svg>
-  {{scaleX}}
 </template>
 
 <script>
@@ -23,7 +43,10 @@ import { computed, toRefs, ref, onUpdated, onMounted, nextTick, reactive } from 
 export default {
 
   props: {
-    data: {
+    axis: {
+      required: true
+    },
+    series: {
       required: true,
       type: Array
     },
@@ -39,6 +62,35 @@ export default {
   setup (props) {
     const paddingLeft = ref(0)
     const paddingRight = ref(60)
+
+    const getWidth = (width) => {
+      return (Number.isInteger(parseInt(width))) ? parseInt(width) * 2 : 2
+    }
+
+    const strokeDashArray = {
+      solid: 0,
+      dash: 4,
+      dot: '1, 5',
+      dashdot: '5, 5, 1, 5'
+    }
+
+    const seriesLineStyle = (styles) => {
+      return {
+        stroke: styles.color || 'black',
+        'stroke-width': styles.width || 1,
+        'stroke-dasharray': strokeDashArray[styles.linetype || 'solid']
+      }
+    }
+
+    const seriesScatterStyle = (styles) => {
+      const color = styles.color || 'black'
+      return {
+        fill: (styles.fill) ? color : 'none',
+        stroke: (styles.fill) ? 'none' : color,
+        'stroke-width': 1
+      }
+    }
+
     const updatePadding = () => {
       const tickHtml = document.querySelectorAll('.axis-left .tick')
       const widths = Array.from(tickHtml, a => a.querySelector('.katex').offsetWidth)
@@ -60,7 +112,9 @@ export default {
       })
     })
 
-    const { data, width, height } = toRefs(props)
+    const { series, width, height, axis } = toRefs(props)
+
+    // const sortedData = computed(() => [...data.value].sort((a, b) => a.x - b.x))
 
     const rangeX = computed(() => {
       const widthX = width.value - paddingLeft.value - paddingRight.value
@@ -71,112 +125,124 @@ export default {
       return [heightY, 0]
     })
 
-    const path = computed(() => {
-      const x = d3.scaleLinear().range(rangeX.value).domain(d3.extent(data.value, (d, i) => i))
-      const y = d3.scaleLinear().range(rangeY.value).range(rangeY.value).domain([0, d3.max(data.value, d => d)])
-
-      return d3.line()
-        .x((d, i) => x(i))
-        .y(d => y(d))(data.value)
+    const scaleX = computed(() => {
+      return d3.scaleLinear().range(rangeX.value).domain([0, d3.max(series.value, d => {
+        return d3.max(d.data, t => t.x)
+      })])
     })
+
+    const scaleY = computed(() => {
+      return d3.scaleLinear().range(rangeY.value).domain([0, d3.max(series.value, d => {
+        return d3.max(d.data, t => t.y)
+      })])
+    })
+
+    const path = (s) => {
+      return d3.line()
+        .x(d => scaleX.value(d.x))
+        .y(d => scaleY.value(d.y))(s)
+    }
 
     const viewBox = computed(() => {
       return '0 0 500 270'
     })
 
-    const scaleX = computed(() => {
-      return d3.scaleLinear().range(rangeX.value).domain(d3.extent(data.value, (d, i) => i))
+    const axisDataX = computed(() => {
+      return {
+        scale: scaleX.value,
+        settings: axis.value.x
+      }
     })
 
-    const scaleY = computed(() => {
-      return d3.scaleLinear().range(rangeY.value).domain([0, d3.max(data.value, d => d)])
-    })
-
-    const axisDataX = ref({
-      scale: scaleX.value,
-      type: 'bottom',
-      exponential: false
-    })
-
-    const axisDataY = ref({
-      scale: scaleY.value,
-      type: 'left',
-      exponential: true
-    })
-
-    const axisY = computed(() => {
-      return axisDataY.value
+    const axisDataY = computed(() => {
+      return {
+        scale: scaleY.value,
+        settings: axis.value.y
+      }
     })
 
     const downloadSVG = () => {
       axisDataY.value.exponential = false
     }
 
+    // mainreturn
     return {
-      scaleX,
       viewBox,
       path,
       downloadSVG,
       paddingLeft,
       axisDataX,
-      axisY
-    } // anything returned here will be available for the rest of the component
+      axisDataY,
+      seriesScatterStyle,
+      seriesLineStyle,
+      getWidth
+    }
   },
   directives: {
     axis: {
       mounted (el, binding) {
         const arg = binding.value
-        if (arg.type === 'left') {
-          d3.select(el).call(d3.axisLeft(arg.scale)
-            .ticks(13, '.4~f').tickSize(2))
+        const scale = arg.scale
+        const axis = arg.settings
+
+        if (axis.position === 'left') {
+          d3.select(el).call(d3.axisLeft(scale)
+            .ticks(axis.ticks, '.4~f').tickSize(2))
         }
-        if (arg.type === 'bottom') {
-          d3.select(el).call(d3.axisBottom(arg.scale)
-            .ticks(13, '.4~f').tickSize(2))
+        if (axis.position === 'bottom') {
+          d3.select(el).call(d3.axisBottom(scale)
+            .ticks(axis.ticks, '.4~f').tickSize(2))
         }
 
-        const ticks = el.querySelectorAll('.tick')
+        const ticksSelector = '.axis.axis-' + axis.position + ' .tick'
+        const ticks = el.querySelectorAll(ticksSelector)
 
         for (const tick of ticks) {
           const self = d3.select(tick)
           const g = self.select('text')
           const value = g.text()
+          g.remove()
           let texNotation = value
-          if (arg.exponential && parseFloat(value) > 10) {
+          if (axis.exponential && parseFloat(value) > 100) {
             const expNotation = parseFloat(value).toExponential()
             texNotation = expNotation.replace('e+',
               '⋅10^{') + '}'
           }
           const mathml = katex.renderToString(texNotation)
           const foreign = self.append('foreignObject').attr('width', 20)
-            .attr('height', 20).attr('y', 8).attr('x', -25).attr('class', 'katex-foreign')
+            .attr('height', 20).attr('y', 8).attr('x', -10).attr('class', 'katex-foreign')
           foreign.append('xhtml:div').html(mathml)
         }
       },
       updated (el, binding) {
         const arg = binding.value
-        d3.selectAll('.axis.axis-' + binding.value.type + ' .tick').remove()
-        d3.select('.axis.axis-' + binding.value.type + '  path').remove()
-        if (arg.type === 'left') {
-          d3.select(el).call(d3.axisLeft(arg.scale)
-            .ticks(10, '.4~f').tickSize(2))
+        const scale = arg.scale
+        const axis = arg.settings
+
+        d3.select('.katex-foreign').remove()
+        const ticksSelector = '.axis.axis-' + axis.position + ' .tick'
+
+        d3.selectAll(ticksSelector).remove()
+        d3.select('.axis.axis-' + axis.position + '  path').remove()
+        if (axis.position === 'left') {
+          d3.select(el).call(d3.axisLeft(scale)
+            .ticks(axis.ticks, '.4~f').tickSize(2))
         }
-        if (arg.type === 'bottom') {
-          d3.select(el).call(d3.axisBottom(arg.scale)
-            .ticks(10, '.4~f').tickSize(2))
+        if (axis.position === 'bottom') {
+          d3.select(el).call(d3.axisBottom(scale)
+            .ticks(axis.ticks, '.4~f').tickSize(2))
         }
 
-        const ticks = el.querySelectorAll('.tick')
+        const ticks = el.querySelectorAll(ticksSelector)
 
         for (const tick of ticks) {
           const self = d3.select(tick)
           const g = self.select('text')
-          const katexHtml = self.select('.katex-foreign')
           if (g.empty()) continue
-          katexHtml.remove()
           const value = g.text()
+          g.remove()
           let texNotation = value
-          if (arg.exponential && parseFloat(value) > 10) {
+          if (axis.exponential && parseFloat(value) > 10) {
             const expNotation = parseFloat(value).toExponential()
             texNotation = expNotation.replace('e+',
               '⋅10^{') + '}'
@@ -184,7 +250,7 @@ export default {
           g.remove()
           const mathml = katex.renderToString(texNotation)
           const foreign = self.append('foreignObject').attr('width', 20)
-            .attr('height', 20).attr('y', 8).attr('x', -25).attr('class', 'katex-foreign')
+            .attr('height', 20).attr('y', 8).attr('x', -10).attr('class', 'katex-foreign')
           foreign.append('xhtml:div').html(mathml)
         }
       }
@@ -202,7 +268,9 @@ export default {
     display: inline-block;
     overflow: visible;
     white-space: nowrap;
-
+  }
+  .katex-foreign {
+    overflow: visible;
   }
 
   .line-chart__line {
