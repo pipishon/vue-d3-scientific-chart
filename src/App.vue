@@ -1,8 +1,13 @@
 <template>
   <button @click="onDataChange">Change Data</button>
-  <div style="width: 50%;">
-    <VueD3Chart :series="series" :axis="axis"></VueD3Chart>
+  <div >
+    <VueD3Chart :series="series" :axis="axis" :labels="labels"></VueD3Chart>
 
+    <div>
+      <h2>Label config</h2>
+      <input v-model="labels.y" />
+      <input v-model="labels.x" />
+    </div>
     <div>
       <h2>Axis config</h2>
       <label>X asix</label>
@@ -57,6 +62,11 @@ const axis = ref({
     size: '14',
     ticks: 10
   }
+})
+
+const labels = ref({
+  x: 'T_k(F)',
+  y: 'F/F_0'
 })
 
 const randPoint = (x: number) => {

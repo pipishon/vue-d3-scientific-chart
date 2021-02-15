@@ -5,12 +5,39 @@
     id="chart"
     :viewBox="viewBox"
   >
-    <g class="main-view" :transform="'translate('+paddingLeft+', 0)'">
-      <g class="axis axis-bottom" v-axis="axisDataX"
-         :transform="`translate(0, ${height - 20})`" >{{axisDataX.settings}}</g>
-      <g class="axis axis-left" v-axis="axisDataY" >{{axisDataY.settings}}</g>
+    <g class="label label-x">
+      <foreignObject
+        height="10"
+        width="10"
+        style="overflow: visible"
+        :transform="`translate(${paddingLeft - 35}, 0)`"
+        v-html="labelY">
+      </foreignObject>
+    </g>
+    <g class="label label-x">
+      <foreignObject
+        height="10"
+        width="100"
+        style="overflow: visible; text-align: right"
+        :transform="`translate(${width - paddingLeft - 60}, ${height - paddingBottom + 6})`"
+        v-html="labelX">
+      </foreignObject>
+    </g>
+    <g class="main-view" :transform="`translate(${paddingLeft}, ${paddingTop})`">
+      <g
+         class="axis axis-bottom"
+         v-axis="axisDataX"
+         :transform="`translate(0, ${height - paddingTop - paddingBottom})`"
+      >{{axisDataX.settings}}</g>
+      <g
+         class="axis axis-left"
+         v-axis="axisDataY"
+      >{{axisDataY.settings}}</g>
 
-      <g v-for="s in series" :key="s.id">
+      <g
+        v-for="s in series"
+        :key="s.id"
+      >
         <path v-if="s.type === 'line'" :style="seriesLineStyle(s.styles)" class="line-chart__line" :d="path(s.data)" />
         <template v-if="s.type === 'scatter'">
           <template v-if="s.sign === 'circle'">
@@ -43,6 +70,9 @@ import { computed, toRefs, ref, onUpdated, onMounted, nextTick, reactive } from 
 export default {
 
   props: {
+    labels: {
+      requred: true
+    },
     axis: {
       required: true
     },
@@ -60,8 +90,12 @@ export default {
     }
   },
   setup (props) {
-    const paddingLeft = ref(0)
+    const paddingLeft = ref(60)
     const paddingRight = ref(60)
+    const paddingTop = ref(20)
+    const paddingBottom = ref(25)
+
+    const { series, width, height, axis, labels } = toRefs(props)
 
     const getWidth = (width) => {
       return (Number.isInteger(parseInt(width))) ? parseInt(width) * 2 : 2
@@ -73,6 +107,19 @@ export default {
       dot: '1, 5',
       dashdot: '5, 5, 1, 5'
     }
+
+    const texConvert = (str) => {
+      let tex = ''
+      try {
+        tex = katex.renderToString(str)
+      } catch (e) {
+      }
+      return tex
+    }
+
+    const labelX = computed(() => texConvert(labels.value.x))
+
+    const labelY = computed(() => texConvert(labels.value.y))
 
     const seriesLineStyle = (styles) => {
       return {
@@ -99,7 +146,7 @@ export default {
         d3.select(tick).select('.katex-foreign').attr('width', maxWidth)
           .attr('y', -8).attr('x', -(maxWidth + 5))
       }
-      paddingLeft.value = maxWidth + 10
+      paddingLeft.value = (maxWidth < 40) ? 40 : maxWidth
     }
 
     onMounted(() => {
@@ -112,8 +159,6 @@ export default {
       })
     })
 
-    const { series, width, height, axis } = toRefs(props)
-
     // const sortedData = computed(() => [...data.value].sort((a, b) => a.x - b.x))
 
     const rangeX = computed(() => {
@@ -121,7 +166,7 @@ export default {
       return [0, widthX]
     })
     const rangeY = computed(() => {
-      const heightY = height.value - 20
+      const heightY = height.value - paddingBottom.value - paddingTop.value
       return [heightY, 0]
     })
 
@@ -140,7 +185,8 @@ export default {
     const path = (s) => {
       return d3.line()
         .x(d => scaleX.value(d.x))
-        .y(d => scaleY.value(d.y))(s)
+        .y(d => scaleY.value(d.y))
+        .curve(d3.curveBasis)(s)
     }
 
     const viewBox = computed(() => {
@@ -171,11 +217,16 @@ export default {
       path,
       downloadSVG,
       paddingLeft,
+      paddingRight,
+      paddingTop,
+      paddingBottom,
       axisDataX,
       axisDataY,
       seriesScatterStyle,
       seriesLineStyle,
-      getWidth
+      getWidth,
+      labelX,
+      labelY
     }
   },
   directives: {
@@ -282,6 +333,9 @@ export default {
     fill: none;
     stroke: black;
     stroke-width: 1px;
+  }
+  .label {
+    font-size: 12px;
   }
 
 /*
