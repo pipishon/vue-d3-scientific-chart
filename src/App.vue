@@ -1,7 +1,12 @@
 <template>
   <button @click="onDataChange">Change Data</button>
   <div >
-    <VueD3Chart :series="series" :axis="axis" :labels="labels"></VueD3Chart>
+    <VueD3Chart
+      :series="series"
+      :axis="axis"
+      :labels="labels"
+    >
+    </VueD3Chart>
 
     <div>
       <h2>Label config</h2>
@@ -47,6 +52,16 @@
 import { ref } from 'vue'
 import VueD3Chart from './components/VueD3Chart.vue'
 
+const lines = ref({
+  x: [
+    3,
+    7
+  ],
+  y: [
+    100,
+    200
+  ]
+})
 const axis = ref({
   x: {
     position: 'bottom',
@@ -72,32 +87,42 @@ const labels = ref({
 const randPoint = (x: number) => {
   return {
     x,
-    y: Math.random() * 100 * x
+    y: (Math.random() + 0.5) * x * x
   }
 }
 
 type ChartSeries = {
-  data: Array<{x: number; y: number}>;
+  data?: Array<{x: number; y: number}>;
   name: string;
   type: string;
+  func?: Function;
   styles: {[key: string]: any};
 }
 
 const series = ref(new Array<ChartSeries>())
 
-for (let j = 0; j < 5; j++) {
+for (let j = 0; j < 4; j++) {
   const data = Array.from({ length: 10 }, (d, i) => randPoint(i))
   const ser: ChartSeries = {
-    name: 'test',
+    name: j,
     type: 'line',
+    sign: 'circle',
     data,
     styles: { } // { color: 'black', width: 1 }
   }
   series.value.push(ser)
 }
+series.value.push({
+  name: 'test',
+  type: 'func',
+  func: (t: number) => Math.pow(t, 2),
+  styles: { color: 'green' } // { color: 'black', width: 1 }
+})
 const onDataChange = () => {
   const seriesData = series.value[0].data
-  seriesData.push(randPoint(seriesData.length))
+  if (seriesData) {
+    seriesData.push(randPoint(seriesData.length))
+  }
 }
 </script>
 

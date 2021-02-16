@@ -24,8 +24,30 @@
       </foreignObject>
     </g>
     <g class="main-view" :transform="`translate(${paddingLeft}, ${paddingTop})`">
+      <g class="line line-vertical" v-if="lines && lines.x">
+        <line
+          v-for="x in lines.x"
+            :key="x"
+            :x1="scaleX(x) + 0.5"
+            :x2="scaleX(x) + 0.5"
+            y1="0"
+            :y2="height - paddingTop - paddingBottom"
+            stroke="red"
+        ></line>
+      </g>
+      <g class="line line-horizontal" v-if="lines && lines.y" >
+        <line
+          v-for="y in lines.y"
+          :key="y"
+          :y1="scaleY(y) + 0.5"
+          :y2="scaleY(y) + 0.5"
+          x1="0"
+          :x2="width - paddingLeft - paddingRight"
+          stroke="red"
+        ></line>
+      </g>
       <g
-         class="axis axis-bottom"
+        class="axis axis-bottom"
          v-axis="axisDataX"
          :transform="`translate(0, ${height - paddingTop - paddingBottom})`"
       >{{axisDataX.settings}}</g>
@@ -33,12 +55,33 @@
          class="axis axis-left"
          v-axis="axisDataY"
       >{{axisDataY.settings}}</g>
-
+      <g
+        class="markers"
+        >
+        <g v-for="marker in markers" :key="marker.name">
+          <line
+            :x1="marker.line.x1"
+            :x2="marker.line.x2"
+            :y1="marker.line.y1"
+            :y2="marker.line.y2"
+            stroke="black"
+          ></line>
+          <text :x="marker.line.x2"
+                style="font-size: 10px;"
+                :y="marker.line.y2" size="1" stroke="black">{{ marker.name }}</text>
+        </g>
+      </g>
       <g
         v-for="s in series"
         :key="s.id"
       >
         <path v-if="s.type === 'line'" :style="seriesLineStyle(s.styles)" class="line-chart__line" :d="path(s.data)" />
+        <path
+          v-if="s.type === 'func'"
+          :style="seriesLineStyle(s.styles)"
+          class="line-chart__line"
+          :d="funcPath(s)"
+        />
         <template v-if="s.type === 'scatter'">
           <template v-if="s.sign === 'circle'">
             <circle  v-for="point in s.data"
@@ -87,6 +130,9 @@ export default {
     height: {
       default: 270,
       type: Number
+    },
+    lines: {
+      required: false
     }
   },
   setup (props) {
@@ -170,23 +216,68 @@ export default {
       return [heightY, 0]
     })
 
+    const maxX = computed(() => d3.max(series.value, d => {
+      return (d.data) ? d3.max(d.data, t => t.x) : 0
+    }))
+
     const scaleX = computed(() => {
-      return d3.scaleLinear().range(rangeX.value).domain([0, d3.max(series.value, d => {
-        return d3.max(d.data, t => t.x)
-      })])
+      return d3.scaleLinear().range(rangeX.value).domain([0, maxX.value])
     })
 
+    const maxY = computed(() => d3.max(series.value, d => {
+      return (d.data) ? d3.max(d.data, t => t.y) : 0
+    }))
+
     const scaleY = computed(() => {
-      return d3.scaleLinear().range(rangeY.value).domain([0, d3.max(series.value, d => {
-        return d3.max(d.data, t => t.y)
-      })])
+      return d3.scaleLinear().range(rangeY.value).domain([0, maxY.value])
     })
 
     const path = (s) => {
       return d3.line()
         .x(d => scaleX.value(d.x))
-        .y(d => scaleY.value(d.y))
-        .curve(d3.curveBasis)(s)
+        .y(d => scaleY.value(d.y))(s)
+        // .curve(d3.curveBasis)(s)
+    }
+
+    const markers = computed(() => {
+      const m = []
+      const points = []
+      for (const s of series.value) {
+        if (typeof s.data === 'undefined') continue
+        const idx = s.data.length / 2
+        points.push({
+          x: scaleX.value(s.data[idx].x),
+          y: scaleY.value(s.data[idx].y)
+        })
+      }
+      for (const p of points) {
+        const d = (p.y > d3.mean(points, (d) => d.y)) ? 40 : -40
+        const line = {
+          x1: p.x,
+          x2: p.x + d,
+          y1: p.y,
+          y2: p.y + d
+        }
+        m.push({
+          line,
+          name: 1
+        })
+      }
+      return m
+    })
+
+    const funcPath = (s) => {
+      const sx = d3.scaleLinear().range([0, maxX.value]).domain([0, 100])
+      const points = Array.from({ length: 100 }, (d, i) => {
+        return {
+          x: sx(i),
+          y: s.func(sx(i))
+        }
+      })
+      return d3.line()
+        .x(d => scaleX.value(d.x))
+        .y(d => scaleY.value(d.y))(points)
+        // .curve(d3.curveBasis)(points)
     }
 
     const viewBox = computed(() => {
@@ -215,6 +306,7 @@ export default {
     return {
       viewBox,
       path,
+      funcPath,
       downloadSVG,
       paddingLeft,
       paddingRight,
@@ -226,7 +318,10 @@ export default {
       seriesLineStyle,
       getWidth,
       labelX,
-      labelY
+      labelY,
+      scaleX,
+      scaleY,
+      markers
     }
   },
   directives: {
